@@ -5,7 +5,8 @@ conda create -y -n latentsync python=3.10.13
 conda activate latentsync
 
 # Install ffmpeg
-conda install -y -c conda-forge ffmpeg
+# conda install -y -c conda-forge ffmpeg
+sudo apt install ffmpeg -y
 
 # Python dependencies
 pip install -r requirements.txt
