@@ -43,3 +43,5 @@ wandb/
 !/latentsync/utils/mask.png
 /checkpoints/
 !/assets/*
+
+.DS_Store
