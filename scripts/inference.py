@@ -49,11 +49,11 @@ def cut_audio(input_path: str, output_path: str, start_time: int, end_time: int)
     ffmpeg.input(input_path, ss=start_time).output(
         output_path,
         t=end_time - start_time,
+        format="mp3",  # Ensure output format is MP3
+        acodec="libmp3lame",  # Use MP3 codec
+        audio_bitrate="128k",  # Set bitrate
         y="-y",
         **{
-            "c:a": "aac",  # Use AAC codec
-            "b:a": "128k",  # Set bitrate
-            "strict": "experimental",
             "hide_banner": None,
             "loglevel": "error",
         },
