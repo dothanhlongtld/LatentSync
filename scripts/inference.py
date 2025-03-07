@@ -24,6 +24,7 @@ from latentsync.whisper.audio2feature import Audio2Feature
 import ffmpeg
 import os
 from pathlib import Path
+import subprocess
 
 
 def cut_video(input_path: str, output_path: str, start_time: int, end_time: int):
@@ -58,6 +59,43 @@ def cut_audio(input_path: str, output_path: str, start_time: int, end_time: int)
             "loglevel": "error",
         },
     ).run()
+
+    return output_path
+
+def concatenate_videos(video_paths, output_path):
+    filter_args = "".join([f"[{i}:v:0][{i}:a:0]" for i in range(len(video_paths))])
+    filter_args += f"concat=n={len(video_paths)}:v=1:a=1[v][a]"
+
+    ffmpeg_cmd = ["ffmpeg", "-y"]
+
+    for path in video_paths:
+        ffmpeg_cmd.extend(["-i", path])
+
+    ffmpeg_cmd.extend(
+        [
+            "-filter_complex",
+            filter_args,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-map",
+            "[v]",
+            "-map",
+            "[a]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "28",
+            "-r",
+            "30",
+            "-y",
+            output_path,
+        ]
+    )
+
+    subprocess.run(ffmpeg_cmd, check=True)
 
     return output_path
 
@@ -129,13 +167,6 @@ def main(config, args):
 
         cut_audios.append(segment_video_output_path)
 
-    print(cut_videos)
-    print(cut_audios)
-
-    return
-
-
-
     scheduler = DDIMScheduler.from_pretrained("configs")
 
     if config.model.cross_attention_dim == 768:
@@ -177,19 +208,33 @@ def main(config, args):
 
     print(f"Initial seed: {torch.initial_seed()}")
 
-    pipeline(
-        video_path=args.video_path,
-        audio_path=args.audio_path,
-        video_out_path=args.video_out_path,
-        video_mask_path=args.video_out_path.replace(".mp4", "_mask.mp4"),
-        num_frames=config.data.num_frames,
-        num_inference_steps=args.inference_steps,
-        guidance_scale=args.guidance_scale,
-        weight_dtype=dtype,
-        width=config.data.resolution,
-        height=config.data.resolution,
-    )
+    outputs = []
 
+    for i, (video_path, audio_path) in enumerate(zip(cut_videos, cut_audios)):
+        print(f"Processing segment {i+1}/{total_segments}")
+
+        video_out_path = f"output_{i+1}.mp4"
+
+        pipeline(
+            video_path=video_path,
+            audio_path=audio_path,
+            video_out_path=video_out_path,
+            video_mask_path=video_out_path.replace(".mp4", "_mask.mp4"),
+            num_frames=config.data.num_frames,
+            num_inference_steps=args.inference_steps,
+            guidance_scale=args.guidance_scale,
+            weight_dtype=dtype,
+            width=config.data.resolution,
+            height=config.data.resolution,
+        )
+
+        outputs.append(video_out_path)
+
+    print("Combining segments...")
+
+    concatenate_videos(outputs, args.video_out_path)
+
+    print(args.video_out_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
