@@ -21,6 +21,30 @@ from latentsync.pipelines.lipsync_pipeline import LipsyncPipeline
 from diffusers.utils.import_utils import is_xformers_available
 from accelerate.utils import set_seed
 from latentsync.whisper.audio2feature import Audio2Feature
+import ffmpeg
+import os
+from pathlib import Path
+
+
+def cut_video(input_path: str, output_path: str, start_time: int, end_time: int):
+    ffmpeg.input(input_path, ss=start_time).output(
+        output_path,
+        t=end_time - start_time,
+        y="-y",
+        **{
+            "crf": "28",
+            "c:v": "libx264",
+            "preset": "ultrafast",
+            "vf": "fps=30,format=yuv420p",
+            "c:a": "aac",
+            "strict": "experimental",
+            "hide_banner": None,
+            "loglevel": "error",
+        },
+    ).run()
+
+    return output_path
+
 
 
 def main(config, args):
@@ -31,6 +55,45 @@ def main(config, args):
     print(f"Input video path: {args.video_path}")
     print(f"Input audio path: {args.audio_path}")
     print(f"Loaded checkpoint path: {args.inference_ckpt_path}")
+
+    video_probe = ffmpeg.probe(args.video_path, cmd="ffprobe")
+    video_info = next(s for s in video_probe["streams"] if s["codec_type"] == "video")
+    video_duration = float(video_info["duration"])
+
+    segment_duration = 5
+
+    if video_duration <= segment_duration:
+        total_segments = 1
+    else:
+        total_segments = int(video_duration // segment_duration)
+        if video_duration % segment_duration != 0:
+            total_segments += 1
+
+    cut_results = []
+
+    output_folder_path = 'assets'
+
+    for i in range(total_segments):
+        part = f"{i+1}"
+
+        start_time = i * segment_duration
+        end_time = (i + 1) * segment_duration
+
+        end_time = min(end_time, video_duration)
+
+        segment_video_output_path = cut_video(
+            input_path=args.video_path,
+            output_path=os.path.join(
+                output_folder_path,
+                f"{part}.mp4",
+            ),
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        cut_results.append(segment_video_output_path)
+
+    return
 
     scheduler = DDIMScheduler.from_pretrained("configs")
 
