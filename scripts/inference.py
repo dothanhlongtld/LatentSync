@@ -91,6 +91,8 @@ def main(config, args):
             end_time=end_time,
         )
 
+        print(segment_video_output_path)
+
         cut_results.append(segment_video_output_path)
 
     return
