@@ -45,7 +45,21 @@ def cut_video(input_path: str, output_path: str, start_time: int, end_time: int)
 
     return output_path
 
+def cut_audio(input_path: str, output_path: str, start_time: int, end_time: int):
+    ffmpeg.input(input_path, ss=start_time).output(
+        output_path,
+        t=end_time - start_time,
+        y="-y",
+        **{
+            "c:a": "aac",  # Use AAC codec
+            "b:a": "128k",  # Set bitrate
+            "strict": "experimental",
+            "hide_banner": None,
+            "loglevel": "error",
+        },
+    ).run()
 
+    return output_path
 
 def main(config, args):
     # Check if the GPU supports float16
@@ -69,7 +83,7 @@ def main(config, args):
         if video_duration % segment_duration != 0:
             total_segments += 1
 
-    cut_results = []
+    cut_videos = []
 
     output_folder_path = 'assets'
 
@@ -91,11 +105,36 @@ def main(config, args):
             end_time=end_time,
         )
 
-        print(segment_video_output_path)
+        cut_videos.append(segment_video_output_path)
 
-        cut_results.append(segment_video_output_path)
+    cut_audios = []
+
+    for i in range(total_segments):
+        part = f"{i+1}"
+
+        start_time = i * segment_duration
+        end_time = (i + 1) * segment_duration
+
+        end_time = min(end_time, video_duration)
+
+        segment_video_output_path = cut_audio(
+            input_path=args.audio_path,
+            output_path=os.path.join(
+                output_folder_path,
+                f"{part}.mp3",
+            ),
+            start_time=start_time,
+            end_time=end_time,
+        )
+
+        cut_audios.append(segment_video_output_path)
+
+    print(cut_videos)
+    print(cut_audios)
 
     return
+
+
 
     scheduler = DDIMScheduler.from_pretrained("configs")
 
