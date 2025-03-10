@@ -5,6 +5,6 @@ python -m scripts.inference \
     --inference_ckpt_path "checkpoints/latentsync_unet.pt" \
     --inference_steps 20 \
     --guidance_scale 1.5 \
-    --video_path "assets/demo5_video.mp4" \
-    --audio_path "assets/demo5_audio.mp3" \
-    --video_out_path "video_out.mp4"
+    --video_path "assets/demo6_video.mp4" \
+    --audio_path "assets/demo6_audio.mp3" \
+    --video_out_path "video_out_6.mp4"
