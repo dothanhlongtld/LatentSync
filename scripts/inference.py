@@ -21,83 +21,7 @@ from latentsync.pipelines.lipsync_pipeline import LipsyncPipeline
 from diffusers.utils.import_utils import is_xformers_available
 from accelerate.utils import set_seed
 from latentsync.whisper.audio2feature import Audio2Feature
-import ffmpeg
-import os
-from pathlib import Path
-import subprocess
 
-
-def cut_video(input_path: str, output_path: str, start_time: int, end_time: int):
-    ffmpeg.input(input_path, ss=start_time).output(
-        output_path,
-        t=end_time - start_time,
-        y="-y",
-        **{
-            "crf": "28",
-            "c:v": "libx264",
-            "preset": "ultrafast",
-            "vf": "fps=30,format=yuv420p",
-            "c:a": "aac",
-            "strict": "experimental",
-            "hide_banner": None,
-            "loglevel": "error",
-        },
-    ).run()
-
-    return output_path
-
-def cut_audio(input_path: str, output_path: str, start_time: int, end_time: int):
-    ffmpeg.input(input_path, ss=start_time).output(
-        output_path,
-        t=end_time - start_time,
-        format="mp3",  # Ensure output format is MP3
-        acodec="libmp3lame",  # Use MP3 codec
-        audio_bitrate="128k",  # Set bitrate
-        y="-y",
-        **{
-            "hide_banner": None,
-            "loglevel": "error",
-        },
-    ).run()
-
-    return output_path
-
-def concatenate_videos(video_paths, output_path):
-    filter_args = "".join([f"[{i}:v:0][{i}:a:0]" for i in range(len(video_paths))])
-    filter_args += f"concat=n={len(video_paths)}:v=1:a=1[v][a]"
-
-    ffmpeg_cmd = ["ffmpeg", "-y"]
-
-    for path in video_paths:
-        ffmpeg_cmd.extend(["-i", path])
-
-    ffmpeg_cmd.extend(
-        [
-            "-filter_complex",
-            filter_args,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-map",
-            "[v]",
-            "-map",
-            "[a]",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "ultrafast",
-            "-crf",
-            "28",
-            "-r",
-            "30",
-            "-y",
-            output_path,
-        ]
-    )
-
-    subprocess.run(ffmpeg_cmd, check=True)
-
-    return output_path
 
 def main(config, args):
     # Check if the GPU supports float16
@@ -107,65 +31,6 @@ def main(config, args):
     print(f"Input video path: {args.video_path}")
     print(f"Input audio path: {args.audio_path}")
     print(f"Loaded checkpoint path: {args.inference_ckpt_path}")
-
-    video_probe = ffmpeg.probe(args.video_path, cmd="ffprobe")
-    video_info = next(s for s in video_probe["streams"] if s["codec_type"] == "video")
-    video_duration = float(video_info["duration"])
-
-    segment_duration = 5
-
-    if video_duration <= segment_duration:
-        total_segments = 1
-    else:
-        total_segments = int(video_duration // segment_duration)
-        if video_duration % segment_duration != 0:
-            total_segments += 1
-
-    cut_videos = []
-
-    output_folder_path = 'assets'
-
-    for i in range(total_segments):
-        part = f"{i+1}"
-
-        start_time = i * segment_duration
-        end_time = (i + 1) * segment_duration
-
-        end_time = min(end_time, video_duration)
-
-        segment_video_output_path = cut_video(
-            input_path=args.video_path,
-            output_path=os.path.join(
-                output_folder_path,
-                f"{part}.mp4",
-            ),
-            start_time=start_time,
-            end_time=end_time,
-        )
-
-        cut_videos.append(segment_video_output_path)
-
-    cut_audios = []
-
-    for i in range(total_segments):
-        part = f"{i+1}"
-
-        start_time = i * segment_duration
-        end_time = (i + 1) * segment_duration
-
-        end_time = min(end_time, video_duration)
-
-        segment_video_output_path = cut_audio(
-            input_path=args.audio_path,
-            output_path=os.path.join(
-                output_folder_path,
-                f"{part}.mp3",
-            ),
-            start_time=start_time,
-            end_time=end_time,
-        )
-
-        cut_audios.append(segment_video_output_path)
 
     scheduler = DDIMScheduler.from_pretrained("configs")
 
@@ -208,33 +73,19 @@ def main(config, args):
 
     print(f"Initial seed: {torch.initial_seed()}")
 
-    outputs = []
+    pipeline(
+        video_path=args.video_path,
+        audio_path=args.audio_path,
+        video_out_path=args.video_out_path,
+        video_mask_path=args.video_out_path.replace(".mp4", "_mask.mp4"),
+        num_frames=config.data.num_frames,
+        num_inference_steps=args.inference_steps,
+        guidance_scale=args.guidance_scale,
+        weight_dtype=dtype,
+        width=config.data.resolution,
+        height=config.data.resolution,
+    )
 
-    for i, (video_path, audio_path) in enumerate(zip(cut_videos, cut_audios)):
-        print(f"Processing segment {i+1}/{total_segments}")
-
-        video_out_path = f"output_{i+1}.mp4"
-
-        pipeline(
-            video_path=video_path,
-            audio_path=audio_path,
-            video_out_path=video_out_path,
-            video_mask_path=video_out_path.replace(".mp4", "_mask.mp4"),
-            num_frames=config.data.num_frames,
-            num_inference_steps=args.inference_steps,
-            guidance_scale=args.guidance_scale,
-            weight_dtype=dtype,
-            width=config.data.resolution,
-            height=config.data.resolution,
-        )
-
-        outputs.append(video_out_path)
-
-    print("Combining segments...")
-
-    concatenate_videos(outputs, args.video_out_path)
-
-    print(args.video_out_path)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
