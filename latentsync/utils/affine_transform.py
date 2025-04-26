@@ -8,10 +8,10 @@ import kornia
 
 
 class AlignRestore(object):
-    def __init__(self, align_points=3, device="cpu", dtype=torch.float32):
+    def __init__(self, align_points=3, resolution=256, device="cpu", dtype=torch.float32):
         if align_points == 3:
             self.upscale_factor = 1
-            ratio = 2.8
+            ratio = resolution / 256 * 2.8
             self.crop_ratio = (ratio, ratio)
             self.face_template = np.array([[19 - 2, 30 - 10], [56 + 2, 30 - 10], [37.5, 45 - 5]])
             self.face_template = self.face_template * ratio
