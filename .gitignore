@@ -48,3 +48,4 @@ wandb/
 !/assets/*
 !/docs/*
 !/internal/*.png
+.cog/
